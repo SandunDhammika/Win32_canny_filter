@@ -19,7 +19,7 @@ namespace {
 constexpr wchar_t kWindowClassName[] = L"Win32CannyFilterWindow";
 constexpr wchar_t kWindowTitle[] = L"Win32 Canny Filter (Clipboard)";
 
-constexpr int kControlAreaHeight = 58;
+constexpr int kControlAreaHeight = 92;
 constexpr int kMargin = 8;
 
 enum MenuId : UINT {
@@ -32,8 +32,8 @@ enum MenuId : UINT {
 };
 
 enum ControlId : int {
-    IDC_EDIT_LOW = 2001,
-    IDC_EDIT_HIGH,
+    IDC_SLIDER_LOW = 2001,
+    IDC_SLIDER_HIGH,
     IDC_BTN_APPLY
 };
 
@@ -53,8 +53,8 @@ struct AppState {
     int lowThreshold = 50;
     int highThreshold = 120;
 
-    HWND hEditLow = nullptr;
-    HWND hEditHigh = nullptr;
+    HWND hSliderLow = nullptr;
+    HWND hSliderHigh = nullptr;
     HWND hBtnApply = nullptr;
 };
 
@@ -66,34 +66,35 @@ int ClampThreshold(int value) {
     return value;
 }
 
-void SetThresholdEdits(HWND hwnd) {
-    wchar_t buf[16] = {};
-    _snwprintf_s(buf, _TRUNCATE, L"%d", g_state.lowThreshold);
-    SetWindowTextW(g_state.hEditLow, buf);
-    _snwprintf_s(buf, _TRUNCATE, L"%d", g_state.highThreshold);
-    SetWindowTextW(g_state.hEditHigh, buf);
+void SetThresholdSliders(HWND hwnd) {
+    if (g_state.hSliderLow) {
+        SendMessageW(g_state.hSliderLow, TBM_SETPOS, TRUE, g_state.lowThreshold);
+    }
+    if (g_state.hSliderHigh) {
+        SendMessageW(g_state.hSliderHigh, TBM_SETPOS, TRUE, g_state.highThreshold);
+    }
     InvalidateRect(hwnd, nullptr, TRUE);
 }
 
-bool ReadThresholdsFromEdits() {
-    wchar_t buf[32] = {};
-    GetWindowTextW(g_state.hEditLow, buf, static_cast<int>(std::size(buf)));
-    int low = _wtoi(buf);
+void ReadThresholdsFromSliders() {
+    if (!g_state.hSliderLow || !g_state.hSliderHigh) {
+        return;
+    }
 
-    ZeroMemory(buf, sizeof(buf));
-    GetWindowTextW(g_state.hEditHigh, buf, static_cast<int>(std::size(buf)));
-    int high = _wtoi(buf);
+    int low = static_cast<int>(SendMessageW(g_state.hSliderLow, TBM_GETPOS, 0, 0));
+    int high = static_cast<int>(SendMessageW(g_state.hSliderHigh, TBM_GETPOS, 0, 0));
 
     low = ClampThreshold(low);
     high = ClampThreshold(high);
 
     if (low > high) {
         std::swap(low, high);
+        SendMessageW(g_state.hSliderLow, TBM_SETPOS, TRUE, low);
+        SendMessageW(g_state.hSliderHigh, TBM_SETPOS, TRUE, high);
     }
 
     g_state.lowThreshold = low;
     g_state.highThreshold = high;
-    return true;
 }
 
 GrayImage BitmapToGray(HBITMAP hBitmap) {
@@ -575,9 +576,9 @@ void RunCannyAndRefresh(HWND hwnd) {
         return;
     }
 
-    ReadThresholdsFromEdits();
+    ReadThresholdsFromSliders();
     g_state.output = CannyFilter(g_state.input, g_state.lowThreshold, g_state.highThreshold);
-    SetThresholdEdits(hwnd);
+    SetThresholdSliders(hwnd);
     InvalidateRect(hwnd, nullptr, TRUE);
 }
 
@@ -662,12 +663,15 @@ void LayoutControls(HWND hwnd) {
     RECT rc = {};
     GetClientRect(hwnd, &rc);
 
-    const int y = 14;
-    const int h = 24;
+    const int sliderLeft = 120;
+    const int sliderWidth = std::max(120, static_cast<int>(rc.right) - 360);
+    const int sliderHeight = 28;
+    const int lowY = 10;
+    const int highY = 42;
 
-    MoveWindow(g_state.hEditLow, 120, y, 60, h, TRUE);
-    MoveWindow(g_state.hEditHigh, 295, y, 60, h, TRUE);
-    MoveWindow(g_state.hBtnApply, 380, y - 1, 80, h + 2, TRUE);
+    MoveWindow(g_state.hSliderLow, sliderLeft, lowY, sliderWidth, sliderHeight, TRUE);
+    MoveWindow(g_state.hSliderHigh, sliderLeft, highY, sliderWidth, sliderHeight, TRUE);
+    MoveWindow(g_state.hBtnApply, sliderLeft + sliderWidth + 10, 24, 80, 28, TRUE);
 
     InvalidateRect(hwnd, nullptr, TRUE);
 }
@@ -694,10 +698,15 @@ HMENU BuildMenu() {
 }
 
 void DrawTopLabels(HDC hdc) {
-    RECT lowLabel{16, 16, 115, 40};
-    RECT highLabel{200, 16, 292, 40};
-    DrawTextW(hdc, L"Low Threshold:", -1, &lowLabel, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    DrawTextW(hdc, L"High Threshold:", -1, &highLabel, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    wchar_t lowBuf[64] = {};
+    wchar_t highBuf[64] = {};
+    _snwprintf_s(lowBuf, _TRUNCATE, L"Low Threshold: %d", g_state.lowThreshold);
+    _snwprintf_s(highBuf, _TRUNCATE, L"High Threshold: %d", g_state.highThreshold);
+
+    RECT lowLabel{16, 14, 115, 36};
+    RECT highLabel{16, 46, 115, 68};
+    DrawTextW(hdc, lowBuf, -1, &lowLabel, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    DrawTextW(hdc, highBuf, -1, &highLabel, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -705,40 +714,48 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_CREATE: {
             INITCOMMONCONTROLSEX icc = {};
             icc.dwSize = sizeof(icc);
-            icc.dwICC = ICC_STANDARD_CLASSES;
+            icc.dwICC = ICC_STANDARD_CLASSES | ICC_BAR_CLASSES;
             InitCommonControlsEx(&icc);
 
             SetMenu(hwnd, BuildMenu());
 
-            g_state.hEditLow = CreateWindowExW(
-                WS_EX_CLIENTEDGE,
-                L"EDIT",
-                L"50",
-                WS_CHILD | WS_VISIBLE | ES_LEFT | ES_NUMBER,
+            g_state.hSliderLow = CreateWindowExW(
+                0,
+                TRACKBAR_CLASSW,
+                L"",
+                WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
                 0,
                 0,
                 0,
                 0,
                 hwnd,
-                reinterpret_cast<HMENU>(IDC_EDIT_LOW),
+                reinterpret_cast<HMENU>(IDC_SLIDER_LOW),
                 GetModuleHandleW(nullptr),
                 nullptr
             );
 
-            g_state.hEditHigh = CreateWindowExW(
-                WS_EX_CLIENTEDGE,
-                L"EDIT",
-                L"120",
-                WS_CHILD | WS_VISIBLE | ES_LEFT | ES_NUMBER,
+            g_state.hSliderHigh = CreateWindowExW(
+                0,
+                TRACKBAR_CLASSW,
+                L"",
+                WS_CHILD | WS_VISIBLE | TBS_AUTOTICKS,
                 0,
                 0,
                 0,
                 0,
                 hwnd,
-                reinterpret_cast<HMENU>(IDC_EDIT_HIGH),
+                reinterpret_cast<HMENU>(IDC_SLIDER_HIGH),
                 GetModuleHandleW(nullptr),
                 nullptr
             );
+
+            SendMessageW(g_state.hSliderLow, TBM_SETRANGEMIN, TRUE, 0);
+            SendMessageW(g_state.hSliderLow, TBM_SETRANGEMAX, TRUE, 255);
+            SendMessageW(g_state.hSliderLow, TBM_SETTICFREQ, 16, 0);
+
+            SendMessageW(g_state.hSliderHigh, TBM_SETRANGEMIN, TRUE, 0);
+            SendMessageW(g_state.hSliderHigh, TBM_SETRANGEMAX, TRUE, 255);
+            SendMessageW(g_state.hSliderHigh, TBM_SETTICFREQ, 16, 0);
 
             g_state.hBtnApply = CreateWindowExW(
                 0,
@@ -754,6 +771,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 GetModuleHandleW(nullptr),
                 nullptr
             );
+
+            SetThresholdSliders(hwnd);
 
             LayoutControls(hwnd);
             return 0;
@@ -804,6 +823,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
                 default:
                     break;
+            }
+            break;
+        }
+
+        case WM_HSCROLL: {
+            const HWND hCtrl = reinterpret_cast<HWND>(lParam);
+            if (hCtrl == g_state.hSliderLow || hCtrl == g_state.hSliderHigh) {
+                ReadThresholdsFromSliders();
+                InvalidateRect(hwnd, nullptr, TRUE);
+                return 0;
             }
             break;
         }
