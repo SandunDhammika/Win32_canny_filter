@@ -622,14 +622,15 @@ void DrawGrayImage(HDC hdc, const RECT& panelRect, const GrayImage& img, const w
     const int dx = drawRect.left + (areaW - drawW) / 2;
     const int dy = drawRect.top + (areaH - drawH) / 2;
 
-    std::vector<uint8_t> rgb(static_cast<size_t>(img.width) * img.height * 3u);
+    std::vector<uint8_t> bgra(static_cast<size_t>(img.width) * img.height * 4u);
     for (int y = 0; y < img.height; ++y) {
         for (int x = 0; x < img.width; ++x) {
             const uint8_t v = img.pixels[static_cast<size_t>(y) * img.width + x];
-            const size_t i = (static_cast<size_t>(y) * img.width + x) * 3u;
-            rgb[i + 0] = v;
-            rgb[i + 1] = v;
-            rgb[i + 2] = v;
+            const size_t i = (static_cast<size_t>(y) * img.width + x) * 4u;
+            bgra[i + 0] = v;
+            bgra[i + 1] = v;
+            bgra[i + 2] = v;
+            bgra[i + 3] = 0;
         }
     }
 
@@ -638,7 +639,7 @@ void DrawGrayImage(HDC hdc, const RECT& panelRect, const GrayImage& img, const w
     bmi.bmiHeader.biWidth = img.width;
     bmi.bmiHeader.biHeight = -img.height;
     bmi.bmiHeader.biPlanes = 1;
-    bmi.bmiHeader.biBitCount = 24;
+    bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
 
     SetStretchBltMode(hdc, HALFTONE);
@@ -652,7 +653,7 @@ void DrawGrayImage(HDC hdc, const RECT& panelRect, const GrayImage& img, const w
         0,
         img.width,
         img.height,
-        rgb.data(),
+        bgra.data(),
         &bmi,
         DIB_RGB_COLORS,
         SRCCOPY
