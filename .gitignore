@@ -1,0 +1,10 @@
+# Build outputs
+*.obj
+*.o
+*.exe
+*.ilk
+*.pdb
+
+# VS/Windows artifacts
+.vs/
+*.user

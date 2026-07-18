@@ -1,0 +1,28 @@
+!IFNDEF CFG
+CFG=release
+!ENDIF
+
+OUT=canny_gui.exe
+SRC=main.cpp
+OBJ=main.obj
+
+CFLAGS=/nologo /W4 /EHsc /std:c++17
+LDFLAGS=/nologo user32.lib gdi32.lib comctl32.lib /SUBSYSTEM:WINDOWS
+
+!IF "$(CFG)" == "debug"
+CFLAGS=$(CFLAGS) /Zi /Od
+LDFLAGS=$(LDFLAGS) /DEBUG
+!ELSE
+CFLAGS=$(CFLAGS) /O2
+!ENDIF
+
+all: $(OUT)
+
+$(OUT): $(OBJ)
+	link $(OBJ) /OUT:$(OUT) $(LDFLAGS)
+
+$(OBJ): $(SRC)
+	cl $(CFLAGS) /c $(SRC) /Fo$(OBJ)
+
+clean:
+	-@del /Q $(OBJ) $(OUT) vc*.pdb *.ilk 2>NUL
